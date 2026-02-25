@@ -55,7 +55,7 @@ class GeminiService:
                 # 3) normalize stock_exchange_listing token(s)
                 parsed = self._parse_or_raw(response.text)
                 parsed = self._clean_gemini_response(parsed)
-                parsed = self._normalize_stock_exchange_listing(parsed)
+                # parsed = self._normalize_stock_exchange_listing(parsed)
                 return parsed
             except Exception as e:
                 last_error = e
@@ -100,73 +100,73 @@ class GeminiService:
                 return {"raw_response": clean}
         return result
 
-    def _normalize_stock_exchange_listing(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Script-equivalent normalization:
-        - only BSE -> BSE
-        - only NSE -> NSE
-        - both -> BSENSE
-        - keep any other exchanges as uppercase tokens after the above.
-        """
-        if not isinstance(result, dict):
-            return result
+    # def _normalize_stock_exchange_listing(self, result: Dict[str, Any]) -> Dict[str, Any]:
+    #     """
+    #     Script-equivalent normalization:
+    #     - only BSE -> BSE
+    #     - only NSE -> NSE
+    #     - both -> BSENSE
+    #     - keep any other exchanges as uppercase tokens after the above.
+    #     """
+    #     if not isinstance(result, dict):
+    #         return result
 
-        ent = result.get("entity_details")
-        if not isinstance(ent, dict):
-            return result
+    #     ent = result.get("entity_details")
+    #     if not isinstance(ent, dict):
+    #         return result
 
-        val = ent.get("stock_exchange_listing")
-        if val is None:
-            return result
+    #     val = ent.get("stock_exchange_listing")
+    #     if val is None:
+    #         return result
 
-        if isinstance(val, list):
-            raw = " ".join(str(x) for x in val)
-        elif isinstance(val, dict):
-            raw = " ".join(str(v) for v in val.values())
-        else:
-            raw = str(val)
+    #     if isinstance(val, list):
+    #         raw = " ".join(str(x) for x in val)
+    #     elif isinstance(val, dict):
+    #         raw = " ".join(str(v) for v in val.values())
+    #     else:
+    #         raw = str(val)
 
-        s = raw.strip()
-        if s == "":
-            ent["stock_exchange_listing"] = ""
-            result["entity_details"] = ent
-            return result
+    #     s = raw.strip()
+    #     if s == "":
+    #         ent["stock_exchange_listing"] = ""
+    #         result["entity_details"] = ent
+    #         return result
 
-        lowered = s.lower()
-        bse_present = bool(re.search(r"\bbse\b", lowered) or "bombay" in lowered)
-        nse_present = bool(re.search(r"\bnse\b", lowered) or "national stock exchange" in lowered)
+    #     lowered = s.lower()
+    #     bse_present = bool(re.search(r"\bbse\b", lowered) or "bombay" in lowered)
+    #     nse_present = bool(re.search(r"\bnse\b", lowered) or "national stock exchange" in lowered)
 
-        cleaned = lowered
-        cleaned = re.sub(r"bombay stock exchange", "", cleaned)
-        cleaned = re.sub(r"\bbse\b", "", cleaned)
-        cleaned = re.sub(r"national stock exchange", "", cleaned)
-        cleaned = re.sub(r"\bnse\b", "", cleaned)
+    #     cleaned = lowered
+    #     cleaned = re.sub(r"bombay stock exchange", "", cleaned)
+    #     cleaned = re.sub(r"\bbse\b", "", cleaned)
+    #     cleaned = re.sub(r"national stock exchange", "", cleaned)
+    #     cleaned = re.sub(r"\bnse\b", "", cleaned)
 
-        parts = re.split(r"[,;/\\\n]+|\s{2,}|\s", cleaned)
-        others = []
-        for p in parts:
-            token = p.strip()
-            if not token:
-                continue
-            token_up = token.upper()
-            if token_up not in ("BSE", "NSE") and token_up not in others:
-                others.append(token_up)
+    #     parts = re.split(r"[,;/\\\n]+|\s{2,}|\s", cleaned)
+    #     others = []
+    #     for p in parts:
+    #         token = p.strip()
+    #         if not token:
+    #             continue
+    #         token_up = token.upper()
+    #         if token_up not in ("BSE", "NSE") and token_up not in others:
+    #             others.append(token_up)
 
-        result_tokens = []
-        if bse_present and nse_present:
-            result_tokens.append("BSENSE")
-        elif bse_present:
-            result_tokens.append("BSE")
-        elif nse_present:
-            result_tokens.append("NSE")
+    #     result_tokens = []
+    #     if bse_present and nse_present:
+    #         result_tokens.append("BSENSE")
+    #     elif bse_present:
+    #         result_tokens.append("BSE")
+    #     elif nse_present:
+    #         result_tokens.append("NSE")
 
-        for o in others:
-            if o and o not in result_tokens:
-                result_tokens.append(o)
+    #     for o in others:
+    #         if o and o not in result_tokens:
+    #             result_tokens.append(o)
 
-        ent["stock_exchange_listing"] = " ".join(result_tokens)
-        result["entity_details"] = ent
-        return result
+    #     ent["stock_exchange_listing"] = " ".join(result_tokens)
+    #     result["entity_details"] = ent
+    #     return result
 
     def _is_retryable_error(self, err: Exception) -> bool:
         msg = str(err).lower()

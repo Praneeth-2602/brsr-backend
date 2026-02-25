@@ -33,22 +33,72 @@ Ignore everything else.
 
 DO NOT extract Section B or Section C.
 
-------------------------------------------
-STRICT EXTRACTION RULES
-------------------------------------------
+### ------------------------------------------
+### STRICT EXTRACTION RULES
+### ------------------------------------------
 
-1. Extract values exactly as written.
+1. Extract values exactly as written in the PDF.
 2. Do NOT summarize.
 3. Do NOT infer.
 4. Do NOT calculate derived fields.
-5. If value not found:
-  - Use "" for strings
-  - Use null for numeric values
-6. Preserve numeric values without formatting changes.
-7. Do NOT change field names.
-8. Do NOT add extra keys.
-9. Output ONLY valid JSON.
-10. Follow the example JSON structure exactly.
+5. If a value is explicitly written as:
+   * "N/A", "NA", "Not Applicable" -> return "N/A"
+   * "0" -> return 0
+   * "Nil" -> return 0 (only for numeric fields)
+   * "-" -> treat as not available -> return "N/A" (for strings) or 0 (for numbers)
+6. If a field is explicitly present but blank in the PDF -> return null for numeric fields and "N/A" for string fields.
+7. If a field is genuinely not mentioned anywhere in the PDF:
+   * Return null for numeric fields.
+   * Return "N/A" for string fields.
+8. Preserve numeric values exactly as written (do not reformat commas or decimals).
+9. Do NOT change field names.
+10. Do NOT add extra keys.
+11. Do NOT remove keys.
+12. Output ONLY valid JSON.
+13. Do NOT leave string fields as empty strings "" unless the PDF explicitly shows it as blank.
+
+---
+
+### ------------------------------------------
+### CONFIDENCE SCORE CALCULATION 
+### ------------------------------------------
+
+After extraction, calculate confidence_score (0-100) using the following logic:
+
+1. Total required fields in template = 103.
+2. Count as "field_with_value" if:
+   * Field has an actual extracted value.
+   * Field explicitly contains "N/A", "0", "Nil", or null because the PDF explicitly states it or clearly does not provide that data.
+3. Do NOT penalize fields that are:
+   * Not mentioned in the PDF at all.
+   * Clearly not applicable based on the document.
+4. Only reduce confidence if:
+   * A field should logically exist in Section A but extraction failed.
+   * The value was partially extracted or malformed.
+5. Formula:
+   confidence_score = (fields_correctly_extracted / total_fields) x 100
+6. Round to nearest integer.
+7. Assign this score to "confidence_score".
+
+Important:
+* Do NOT reduce confidence for legitimate null, N/A, or zero values.
+* Do NOT reduce confidence for optional subsections not present in the document.
+
+---
+
+### ------------------------------------------
+### FIELD VALUE HANDLING SUMMARY
+### ------------------------------------------
+
+| PDF Value                     | Return                          |
+| ----------------------------- | ------------------------------- |
+| N/A / NA / Not Applicable     | "N/A"                           |
+| 0                             | 0                               |
+| Nil                           | 0 (numeric fields only)         |
+| Explicit blank field          | null (numeric) / "N/A" (string) |
+| Field not present in document | null (numeric) / "N/A" (string) |
+| Actual value found            | Exact extracted value           |
+| Not found at all              | "Not found in the pdf"          |
 
 ------------------------------------------
 FIELDS TO EXTRACT (ONLY THESE)
@@ -63,7 +113,76 @@ FIELDS TO EXTRACT (ONLY THESE)
 7. Telephone number
 8. Website
 9. Financial Year for which reporting is being done
-10. Stock Exchange Listing
+  - Extract in the below formats only (do not reformat):
+    * "2022-2023"
+---
+
+### 10. Stock Exchange Listing (Normalized Output Required)
+
+Extract stock exchange listing information and normalize the output using the rules below:
+
+#### Normalization Rules:
+
+1. If any variation of BSE is found (including but not limited to):
+
+  * "BSE"
+  * "BSE Ltd"
+  * "BSE Limited"
+  * "Bombay Stock Exchange"
+  * "Bombay Stock Exchange Limited"
+
+  → Return exactly: "BSE"
+
+2. If any variation of NSE is found (including but not limited to):
+
+  * "NSE"
+  * "NSE Ltd"
+  * "NSE Limited"
+  * "National Stock Exchange"
+  * "National Stock Exchange of India Limited"
+
+  → Return exactly: "NSE"
+
+3. If both NSE and BSE are mentioned in any format:
+
+  → Return exactly: "BSE NSE"
+
+  (Always return in this order: BSE first, then NSE)
+
+4. If other stock exchanges are mentioned (e.g., international exchanges):
+
+  * Include them after BSE/NSE (if present)
+  * Separate values using a single space
+  * Preserve their original name as written (no reformatting)
+
+  Example:
+
+  * If listed on NSE and London Stock Exchange
+    → "NSE London Stock Exchange"
+
+  * If listed on BSE, NSE and NYSE
+    → "BSE NSE NYSE"
+
+5. If only other stock exchanges are mentioned (no NSE or BSE):
+
+  * Return them exactly as written, separated by a single space.
+
+6. If explicitly stated as not listed:
+
+  * Return "None"
+
+7. If the field is not mentioned in the document:
+
+  * Return "N/A"
+
+#### Output Type:
+
+* Must be a string.
+* Do NOT return arrays.
+* Do NOT return null.
+* Do NOT return empty string unless explicitly blank in PDF.
+
+---
 11. Paid-up Capital
 12. Name and contact details of the person who may be contacted in case of any queries on the BRSR report
 13. Reporting boundary
@@ -152,8 +271,10 @@ FIELDS TO EXTRACT (ONLY THESE)
 24. CSR
     - Is CSR applicable?
     - Turnover (INR Cr)
+      - If not in Cr then convert to Cr using the financial figures mentioned in the report (e.g. if turnover is given as 5000 lakhs, convert to 500 Cr)
     - Net Worth (INR Cr)
-
+      - If not in Cr then convert to Cr using the financial figures mentioned in the report (e.g. if net worth is given as 2000 lakhs, convert to 200 Cr)
+      
 25. Grievance Redressal
     - Mechanism in place?
     - Number of complaints filed (by stakeholder)
@@ -186,7 +307,7 @@ Return ONLY this JSON structure:
     "telephone": "",
     "website": "",
     "financial_year": "",
-    "stock_exchange_listing": "",
+    "stock_exchange_listing": "N/A",
     "paid_up_capital": null,
     "contact_person_details": "",
     "reporting_boundary": "",
