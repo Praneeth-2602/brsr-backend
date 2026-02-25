@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+motor
+pymongo
+pyjwt
+requests
+passlib
+supabase
+httpx
+google-generativeai
+pandas
+openpyxl
+python-multipart
+google-auth
+google-genai
+google-pasta
+ 
