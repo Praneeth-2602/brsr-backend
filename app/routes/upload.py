@@ -7,7 +7,7 @@ import logging
 
 from ..auth import get_current_user
 from ..database import documents_collection
-from ..services.storage_service import StorageService
+from ..services.storage_service import StorageService, DuplicateFileError
 from ..services.gemini_service import GeminiService
 from ..config import settings
 
@@ -523,6 +523,8 @@ async def upload_pdfs(
 
     coll = documents_collection()
     created = []
+    skipped_duplicates = []
+    skipped_invalid = []
 
     async def _process_and_update(doc_id, file_bytes):
       try:
@@ -545,41 +547,65 @@ async def upload_pdfs(
         logging.exception("Failed to update document %s", doc_id)
 
     for uploaded_file in upload_list:
-      if not uploaded_file.filename.lower().endswith(".pdf"):
+      file_name = (uploaded_file.filename or "").strip()
+
+      if not file_name.lower().endswith(".pdf"):
+        skipped_invalid.append(file_name or "unknown")
         continue
 
       file_bytes = await uploaded_file.read()
       if not file_bytes:
+        skipped_invalid.append(file_name)
+        continue
+
+      existing_doc = await coll.find_one(
+        {"user_id": user["sub"], "file_name": file_name},
+        {"_id": 1}
+      )
+      if existing_doc:
+        skipped_duplicates.append(file_name)
         continue
 
       # Upload to Supabase
-      file_path = f"{user['sub']}_{uploaded_file.filename}"
-      file_url = await StorageService.upload_file(
-        file_bytes=file_bytes,
-        file_path=file_path
-      )
+      file_path = f"{user['sub']}_{file_name}"
+      try:
+        file_url = await StorageService.upload_file(
+          file_bytes=file_bytes,
+          file_path=file_path
+        )
+      except DuplicateFileError:
+        skipped_duplicates.append(file_name)
+        continue
 
       if not file_url:
-        logging.error("Failed to upload file %s for user %s", uploaded_file.filename, user["sub"])
+        logging.error("Failed to upload file %s for user %s", file_name, user["sub"])
         continue
 
       # Create DB record with status pending
       document = {
         "user_id": user["sub"],
-        "file_name": uploaded_file.filename,
+        "file_name": file_name,
         "file_url": file_url,
         "status": "pending",
         "created_at": datetime.utcnow()
       }
       res = await coll.insert_one(document)
       doc_id = str(res.inserted_id)
-      created.append({"document_id": doc_id, "file_url": file_url, "file_name": uploaded_file.filename})
+      created.append({"document_id": doc_id, "file_url": file_url, "file_name": file_name})
 
       # schedule background processing
       # use asyncio.create_task to run async worker without blocking response
       asyncio.create_task(_process_and_update(doc_id, file_bytes))
 
-    return {"message": "Files received", "documents": created}
+    return {
+      "message": "Files received",
+      "documents": created,
+      "skipped_duplicates": skipped_duplicates,
+      "skipped_invalid": skipped_invalid,
+    }
+
+  except HTTPException:
+    raise
 
   except Exception as e:
     logging.exception("Upload failed")
