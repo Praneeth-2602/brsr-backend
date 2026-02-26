@@ -122,6 +122,10 @@ FIELDS TO EXTRACT (ONLY THESE)
     - Financial Year 2022-23
     - For the year ended 31 March 2023
     - Year ended March 31, 2023
+    - January to December 2022
+    - Jan to Dec 2022
+    - Jan-Dec 2022
+    - 1 Jan 2022 to 31 Dec 2022
   → Return strictly in this format:
   "2022-23"
 ---
