@@ -113,8 +113,17 @@ FIELDS TO EXTRACT (ONLY THESE)
 7. Telephone number
 8. Website
 9. Financial Year for which reporting is being done
-  - Extract in the below formats only (do not reformat):
-    * "2022-2023"
+  - If the financial year is written in any of the following formats:
+    - 2022-2023
+    - 2022-23
+    - FY 2022-2023
+    - FY22-23
+    - FY 22-23
+    - Financial Year 2022-23
+    - For the year ended 31 March 2023
+    - Year ended March 31, 2023
+  → Return strictly in this format:
+  "2022-23"
 ---
 
 ### 10. Stock Exchange Listing (Normalized Output Required)
